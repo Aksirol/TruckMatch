@@ -5,6 +5,18 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime, timedelta
 import db
+import sys
+import os
+
+# Визначаємо шлях до ресурсів
+if getattr(sys, 'frozen', False):
+    # Якщо програма запущена як exe
+    template_folder = os.path.join(sys._MEIPASS, 'templates')
+    static_folder = os.path.join(sys._MEIPASS, 'static')
+    app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
+else:
+    # Якщо програма запущена через python app.py
+    app = Flask(__name__)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'dev-secret-key-truckmatch'

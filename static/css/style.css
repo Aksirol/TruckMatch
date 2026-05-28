@@ -251,3 +251,44 @@ footer {
 .info-item { background: #f8f9fa; padding: 1rem; border-radius: 6px; border-left: 4px solid var(--accent-color); }
 .notes-section { background: #fffcf5; padding: 1rem; border: 1px solid #f1e2c3; border-radius: 6px; margin-bottom: 1.5rem; }
 .danger-zone { border-top: 1px solid #eee; padding-top: 1rem; text-align: right; }
+
+/* Панель фільтрів (F6) */
+.filters-panel {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    margin-bottom: 1rem;
+}
+.filter-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+}
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 150px;
+}
+.filter-group label {
+    font-size: 0.85rem;
+    font-weight: bold;
+    margin-bottom: 0.3rem;
+    color: var(--secondary-color);
+}
+.filter-group input, .filter-group select {
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+.filter-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Статуси */
+.status-нова { background-color: #3498db; }
+.status-в-обробці { background-color: #f39c12; }
+.status-підтверджено { background-color: #2ecc71; }
+.status-активна { background-color: #2ecc71; }
+.status-завершена { background-color: #95a5a6; }

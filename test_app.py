@@ -319,6 +319,152 @@ class TruckMatchTestCase(unittest.TestCase):
         conn.close()
         self.assertIsNotNone(client)
 
+    # ==========================================
+    # ТЕСТОВІ СЦЕНАРІЇ ДЛЯ ФАЗИ 4 (ЗАЯВКИ ТА ПРОПОЗИЦІЇ)
+    # ==========================================
+
+    def setup_data_for_phase4(self):
+        """Допоміжний метод: створює замовника та перевізника для тестів 4-ї фази"""
+        conn = db.get_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO CLIENTS (full_name) VALUES ('ТОВ Тест Замовник')")
+        client_id = cursor.lastrowid
+        cursor.execute("INSERT INTO CARRIERS (full_name) VALUES ('ФОП Тест Перевізник')")
+        carrier_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return client_id, carrier_id
+
+    def test_4_1_create_cargo_request(self):
+        """4.1 Створити заявку (F1)"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+        client_id, _ = self.setup_data_for_phase4()
+
+        response = self.client.post('/requests/add', data={
+            'client_id': client_id,
+            'origin_city': 'Київ',
+            'destination_city': 'Львів',
+            'cargo_type': 'Будматеріали',
+            'weight_tons': '5.5',
+            'desired_date': '2026-06-10',
+            'notes': 'Терміново'
+        }, follow_redirects=True)
+
+        html = response.data.decode('utf-8')
+        self.assertIn('Заявку на перевезення успішно створено!', html)
+
+        # Перевірка в БД (статус 'Нова')
+        conn = db.get_db()
+        req = conn.execute("SELECT * FROM CARGO_REQUESTS WHERE client_id = ?", (client_id,)).fetchone()
+        conn.close()
+
+        self.assertIsNotNone(req)
+        self.assertEqual(req['status'], 'Нова')
+        self.assertEqual(req['origin_city'], 'Київ')
+
+    def test_4_2_create_carrier_offer(self):
+        """4.2 Створити пропозицію (F2)"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+        _, carrier_id = self.setup_data_for_phase4()
+
+        response = self.client.post('/offers/add', data={
+            'carrier_id': carrier_id,
+            'origin_city': 'Одеса',
+            'destination_city': 'Дніпро',
+            'vehicle_type': 'Тент',
+            'capacity_tons': '22',
+            'available_date': '2026-06-12',
+            'notes': 'Вільний повністю'
+        }, follow_redirects=True)
+
+        self.assertIn('Пропозицію вільного авто успішно опубліковано!', response.data.decode('utf-8'))
+
+        # Перевірка в БД
+        conn = db.get_db()
+        offer = conn.execute("SELECT * FROM CARRIER_OFFERS WHERE carrier_id = ?", (carrier_id,)).fetchone()
+        conn.close()
+
+        self.assertIsNotNone(offer)
+        self.assertEqual(offer['destination_city'], 'Дніпро')
+
+    def test_4_3_and_4_4_filter_requests(self):
+        """4.3 та 4.4 Фільтрація заявок (статус, маршрут, дата)"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+        client_id, _ = self.setup_data_for_phase4()
+
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO CARGO_REQUESTS (client_id, origin_city, destination_city, desired_date, status) VALUES (?, 'Київ', 'Львів', '2026-06-01', 'Нова')",
+            (client_id,))
+        conn.execute(
+            "INSERT INTO CARGO_REQUESTS (client_id, origin_city, destination_city, desired_date, status) VALUES (?, 'Одеса', 'Дніпро', '2026-06-02', 'В обробці')",
+            (client_id,))
+        conn.commit()
+        conn.close()
+
+        # 4.3 Фільтр за статусом
+        resp_status = self.client.get('/requests?status=Нова')
+        html_status = resp_status.data.decode('utf-8')
+        self.assertIn('Київ &rarr; Львів', html_status)
+        self.assertNotIn('Одеса &rarr; Дніпро', html_status)
+
+        # 4.4 Комбінований фільтр (маршрут + дата)
+        resp_combo = self.client.get('/requests?origin=Одеса&date=2026-06-02')
+        html_combo = resp_combo.data.decode('utf-8')
+        self.assertIn('Одеса &rarr; Дніпро', html_combo)
+        self.assertNotIn('Київ &rarr; Львів', html_combo)
+
+    def test_4_5_to_4_7_html_validations(self):
+        """4.5 - 4.7 Перевірка валідації форм (обов'язкові поля, типи, від'ємні значення)"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+
+        # Завантажуємо форму створення заявки
+        response = self.client.get('/requests/add')
+        html = response.data.decode('utf-8')
+
+        # 4.5 Порожні обов'язкові поля блокуються атрибутом required
+        self.assertIn('id="origin_city" name="origin_city" required', html)
+        self.assertIn('id="destination_city" name="destination_city" required', html)
+
+        # 4.6 Нечислова вага / некоректна дата (перевірка типів полів)
+        self.assertIn('type="number"', html)
+        self.assertIn('type="date"', html)
+
+        # 4.7 Вага <= 0 блокується атрибутом min="0.1"
+        self.assertIn('min="0.1"', html)
+
+    def test_4_8_clear_filters(self):
+        """4.8 Скинути фільтри (відновлення списку)"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+        client_id, _ = self.setup_data_for_phase4()
+
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO CARGO_REQUESTS (client_id, origin_city, destination_city) VALUES (?, 'Місто А', 'Місто Б')",
+            (client_id,))
+        conn.execute(
+            "INSERT INTO CARGO_REQUESTS (client_id, origin_city, destination_city) VALUES (?, 'Місто В', 'Місто Г')",
+            (client_id,))
+        conn.commit()
+        conn.close()
+
+        # Фільтруємо так, щоб нічого не знайти (щоб перевірити, що фільтр працює)
+        resp_filtered = self.client.get('/requests?origin=Неіснуюче')
+        self.assertNotIn('Місто А', resp_filtered.data.decode('utf-8'))
+
+        # Скидаємо фільтри (GET запит без параметрів)
+        resp_cleared = self.client.get('/requests')
+        html_cleared = resp_cleared.data.decode('utf-8')
+
+        # Усі записи знову відображаються
+        self.assertIn('Місто А &rarr; Місто Б', html_cleared)
+        self.assertIn('Місто В &rarr; Місто Г', html_cleared)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

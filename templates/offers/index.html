@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h2>Вільні авто (Пропозиції перевізників)</h2>
+    <a href="{{ url_for('add_offer') }}" class="btn">Додати вільне авто</a>
+</div>
+
+<div class="card filters-panel">
+    <form method="GET" action="{{ url_for('offers') }}" class="filter-form">
+        <div class="filter-group">
+            <label>Звідки:</label>
+            <input type="text" name="origin" value="{{ request_args.get('origin', '') }}" placeholder="Місто">
+        </div>
+        <div class="filter-group">
+            <label>Куди:</label>
+            <input type="text" name="destination" value="{{ request_args.get('destination', '') }}" placeholder="Місто">
+        </div>
+        <div class="filter-group">
+            <label>Вільний з дати:</label>
+            <input type="date" name="date" value="{{ request_args.get('date', '') }}">
+        </div>
+        <div class="filter-actions">
+            <button type="submit" class="btn btn-secondary">Фільтрувати</button>
+            <a href="{{ url_for('offers') }}" class="btn btn-clear">Скинути</a>
+        </div>
+    </form>
+</div>
+
+<div class="card table-responsive mt-2">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Маршрут</th>
+                <th>Дата готовності</th>
+                <th>Авто / Вантаж.</th>
+                <th>Перевізник</th>
+                <th>Статус</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for offer in offers %}
+            <tr>
+                <td>{{ offer.id }}</td>
+                <td><strong>{{ offer.origin_city }} &rarr; {{ offer.destination_city }}</strong></td>
+                <td>{{ offer.available_date }}</td>
+                <td>{{ offer.vehicle_type }} ({{ offer.capacity_tons }} т)</td>
+                <td>{{ offer.carrier_name }} <br><small>{{ offer.carrier_phone }}</small></td>
+                <td><span class="badge status-{{ offer.status|replace(' ', '-')|lower }}">{{ offer.status }}</span></td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="text-center">Вільних автомобілів не знайдено.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

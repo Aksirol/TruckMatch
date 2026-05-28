@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h2>Вантажі (Заявки замовників)</h2>
+    <a href="{{ url_for('add_request') }}" class="btn">Додати заявку</a>
+</div>
+
+<div class="card filters-panel">
+    <form method="GET" action="{{ url_for('cargo_requests') }}" class="filter-form">
+        <div class="filter-group">
+            <label>Звідки:</label>
+            <input type="text" name="origin" value="{{ request_args.get('origin', '') }}" placeholder="Місто">
+        </div>
+        <div class="filter-group">
+            <label>Куди:</label>
+            <input type="text" name="destination" value="{{ request_args.get('destination', '') }}" placeholder="Місто">
+        </div>
+        <div class="filter-group">
+            <label>Дата:</label>
+            <input type="date" name="date" value="{{ request_args.get('date', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>Статус:</label>
+            <select name="status">
+                <option value="">Усі статуси</option>
+                <option value="Нова" {% if request_args.get('status') == 'Нова' %}selected{% endif %}>Нова</option>
+                <option value="В обробці" {% if request_args.get('status') == 'В обробці' %}selected{% endif %}>В обробці</option>
+                <option value="Підтверджено" {% if request_args.get('status') == 'Підтверджено' %}selected{% endif %}>Підтверджено</option>
+                <option value="Завершена" {% if request_args.get('status') == 'Завершена' %}selected{% endif %}>Завершена</option>
+            </select>
+        </div>
+        <div class="filter-actions">
+            <button type="submit" class="btn btn-secondary">Фільтрувати</button>
+            <a href="{{ url_for('cargo_requests') }}" class="btn btn-clear">Скинути</a>
+        </div>
+    </form>
+</div>
+
+<div class="card table-responsive mt-2">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Маршрут</th>
+                <th>Дата</th>
+                <th>Вантаж / Вага</th>
+                <th>Замовник</th>
+                <th>Статус</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for req in requests %}
+            <tr>
+                <td>{{ req.id }}</td>
+                <td><strong>{{ req.origin_city }} &rarr; {{ req.destination_city }}</strong></td>
+                <td>{{ req.desired_date }}</td>
+                <td>{{ req.cargo_type }} ({{ req.weight_tons }} т)</td>
+                <td>{{ req.client_name }} <br><small>{{ req.client_phone }}</small></td>
+                <td><span class="badge status-{{ req.status|replace(' ', '-')|lower }}">{{ req.status }}</span></td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="text-center">Заявок не знайдено.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

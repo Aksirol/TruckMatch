@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h2>{{ title }}</h2>
+    <a href="{{ url_for('offers') }}" class="btn btn-secondary">Назад</a>
+</div>
+
+<div class="card">
+    <form method="POST" class="standard-form">
+        <div class="form-group full">
+            <label for="carrier_id">Оберіть перевізника *</label>
+            <select id="carrier_id" name="carrier_id" required>
+                <option value="">-- Оберіть зі списку --</option>
+                {% for carrier in carriers %}
+                    <option value="{{ carrier.id }}">{{ carrier.full_name }} ({{ carrier.vehicle_type }}, {{ carrier.capacity_tons }}т)</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group half">
+                <label for="origin_city">Звідки (Місто/Область) *</label>
+                <input type="text" id="origin_city" name="origin_city" required>
+            </div>
+            <div class="form-group half">
+                <label for="destination_city">Куди (Місто/Область або "Будь-куди") *</label>
+                <input type="text" id="destination_city" name="destination_city" required>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group third">
+                <label for="vehicle_type">Фактичний тип авто *</label>
+                <input type="text" id="vehicle_type" name="vehicle_type" required>
+            </div>
+            <div class="form-group third">
+                <label for="capacity_tons">Вільний тоннаж *</label>
+                <input type="number" step="0.1" min="0.1" id="capacity_tons" name="capacity_tons" required>
+            </div>
+            <div class="form-group third">
+                <label for="available_date">Дата готовності *</label>
+                <input type="date" id="available_date" name="available_date" required>
+            </div>
+        </div>
+
+        <div class="form-group full">
+            <label for="notes">Примітки (форми оплати, побажання)</label>
+            <textarea id="notes" name="notes" rows="3"></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Опублікувати авто</button>
+    </form>
+</div>
+{% endblock %}

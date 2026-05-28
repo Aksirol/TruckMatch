@@ -85,12 +85,120 @@ def index():
     return render_template('dashboard.html', title="Головна")
 
 
-# Інші захищені маршрути-заглушки
+# ==========================================
+# МОДУЛЬ 3: ЗАЯВКИ НА ВАНТАЖОПЕРЕВЕЗЕННЯ (F1, F6)
+# ==========================================
+
 @app.route('/requests')
 @login_required
 def cargo_requests():
-    flash('Розділ "Заявки" знаходиться в розробці.', 'info')
-    return render_template('dashboard.html', title="Заявки")
+    # Зчитування параметрів фільтрації
+    status = request.args.get('status', '')
+    origin = request.args.get('origin', '')
+    destination = request.args.get('destination', '')
+    date = request.args.get('date', '')
+    cargo_type = request.args.get('cargo_type', '')
+
+    # Динамічна побудова SQL-запиту
+    query = '''
+        SELECT CR.*, C.full_name as client_name, C.phone as client_phone 
+        FROM CARGO_REQUESTS CR
+        JOIN CLIENTS C ON CR.client_id = C.id
+        WHERE 1=1
+    '''
+    params = []
+    if status: query += ' AND CR.status = ?'; params.append(status)
+    if origin: query += ' AND CR.origin_city LIKE ?'; params.append(f'%{origin}%')
+    if destination: query += ' AND CR.destination_city LIKE ?'; params.append(f'%{destination}%')
+    if date: query += ' AND CR.desired_date = ?'; params.append(date)
+    if cargo_type: query += ' AND CR.cargo_type LIKE ?'; params.append(f'%{cargo_type}%')
+
+    query += ' ORDER BY CR.created_at DESC'
+
+    conn = db.get_db()
+    requests_list = conn.execute(query, params).fetchall()
+    conn.close()
+
+    return render_template('requests/index.html', requests=requests_list, request_args=request.args,
+                           title="Заявки замовників")
+
+
+@app.route('/requests/add', methods=['GET', 'POST'])
+@login_required
+def add_request():
+    conn = db.get_db()
+    if request.method == 'POST':
+        conn.execute('''INSERT INTO CARGO_REQUESTS 
+                        (client_id, origin_city, destination_city, cargo_type, weight_tons, desired_date, notes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                     (request.form['client_id'], request.form['origin_city'], request.form['destination_city'],
+                      request.form['cargo_type'], request.form['weight_tons'], request.form['desired_date'],
+                      request.form['notes']))
+        conn.commit()
+        conn.close()
+        flash('Заявку на перевезення успішно створено!', 'success')
+        return redirect(url_for('cargo_requests'))
+
+    # Завантажуємо список клієнтів для випадаючого списку
+    clients = conn.execute('SELECT id, full_name FROM CLIENTS ORDER BY full_name').fetchall()
+    conn.close()
+    return render_template('requests/form.html', clients=clients, title="Нова заявка від замовника")
+
+
+# ==========================================
+# МОДУЛЬ 4: ПРОПОЗИЦІЇ ПЕРЕВІЗНИКІВ (ВІЛЬНІ АВТО) (F2, F6)
+# ==========================================
+
+@app.route('/offers')
+@login_required
+def offers():
+    status = request.args.get('status', '')
+    origin = request.args.get('origin', '')
+    destination = request.args.get('destination', '')
+    date = request.args.get('date', '')
+
+    query = '''
+        SELECT CO.*, C.full_name as carrier_name, C.phone as carrier_phone 
+        FROM CARRIER_OFFERS CO
+        JOIN CARRIERS C ON CO.carrier_id = C.id
+        WHERE 1=1
+    '''
+    params = []
+    if status: query += ' AND CO.status = ?'; params.append(status)
+    if origin: query += ' AND CO.origin_city LIKE ?'; params.append(f'%{origin}%')
+    if destination: query += ' AND CO.destination_city LIKE ?'; params.append(f'%{destination}%')
+    if date: query += ' AND CO.available_date = ?'; params.append(date)
+
+    query += ' ORDER BY CO.created_at DESC'
+
+    conn = db.get_db()
+    offers_list = conn.execute(query, params).fetchall()
+    conn.close()
+
+    return render_template('offers/index.html', offers=offers_list, request_args=request.args,
+                           title="Вільний транспорт")
+
+
+@app.route('/offers/add', methods=['GET', 'POST'])
+@login_required
+def add_offer():
+    conn = db.get_db()
+    if request.method == 'POST':
+        conn.execute('''INSERT INTO CARRIER_OFFERS 
+                        (carrier_id, origin_city, destination_city, vehicle_type, capacity_tons, available_date, notes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                     (request.form['carrier_id'], request.form['origin_city'], request.form['destination_city'],
+                      request.form['vehicle_type'], request.form['capacity_tons'], request.form['available_date'],
+                      request.form['notes']))
+        conn.commit()
+        conn.close()
+        flash('Пропозицію вільного авто успішно опубліковано!', 'success')
+        return redirect(url_for('offers'))
+
+    carriers = conn.execute(
+        'SELECT id, full_name, vehicle_type, capacity_tons FROM CARRIERS ORDER BY full_name').fetchall()
+    conn.close()
+    return render_template('offers/form.html', carriers=carriers, title="Додати вільне авто")
 
 
 # ==========================================

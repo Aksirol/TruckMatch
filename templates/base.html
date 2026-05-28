@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+    {% if session.get('user_id') %}
     <header class="navbar">
         <div class="logo">
             <a href="{{ url_for('index') }}">TruckMatch</a>
@@ -18,9 +19,11 @@
                 <li><a href="{{ url_for('carriers') }}">Перевізники</a></li>
                 <li><a href="{{ url_for('deals') }}">Угоди</a></li>
                 <li><a href="{{ url_for('statistics') }}">Статистика</a></li>
+                <li><a href="{{ url_for('logout') }}" class="logout-btn">Вихід</a></li>
             </ul>
         </nav>
     </header>
+    {% endif %}
 
     <div class="container messages">
         {% with messages = get_flashed_messages(with_categories=true) %}

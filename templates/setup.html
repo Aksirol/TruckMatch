@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="card auth-card">
+        <h2>Перший запуск TruckMatch</h2>
+        <p>Вітаємо! Для захисту ваших даних, будь ласка, встановіть пароль доступу до системи.</p>
+        <form method="POST" action="{{ url_for('setup') }}">
+            <div class="form-group">
+                <label for="password">Новий пароль:</label>
+                <input type="password" id="password" name="password" required minlength="4">
+            </div>
+            <button type="submit" class="btn btn-block">Зберегти пароль та почати роботу</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

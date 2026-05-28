@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import tempfile
 import sqlite3
@@ -668,6 +669,121 @@ class TruckMatchTestCase(unittest.TestCase):
         count = conn.execute("SELECT COUNT(*) FROM DEALS WHERE request_id = ?", (req_id,)).fetchone()[0]
         conn.close()
         self.assertEqual(count, 0)
+
+    # ==========================================
+    # ТЕСТОВІ СЦЕНАРІЇ ДЛЯ ФАЗИ 6 (СТАТИСТИКА)
+    # ==========================================
+
+    def test_6_1_to_6_4_statistics_base(self):
+        """6.1 - 6.4 Відкриття сторінки, завершені угоди, обсяги, лічильники"""
+        from datetime import datetime
+        self.setup_admin('testpass')
+        self.login('testpass')
+
+        conn = db.get_db()
+        conn.execute("INSERT INTO CLIENTS (full_name) VALUES ('Стат Клієнт')")
+        conn.execute("INSERT INTO CARRIERS (full_name) VALUES ('Стат Перевізник')")
+
+        # Активні заявки/пропозиції (для перевірки 6.4)
+        conn.execute(
+            "INSERT INTO CARGO_REQUESTS (client_id, origin_city, destination_city, weight_tons, status) VALUES (1, 'Київ', 'Львів', 5.0, 'Нова')")
+        conn.execute(
+            "INSERT INTO CARGO_REQUESTS (client_id, origin_city, destination_city, weight_tons, status) VALUES (1, 'Одеса', 'Дніпро', 5.0, 'Нова')")
+        conn.execute(
+            "INSERT INTO CARRIER_OFFERS (carrier_id, origin_city, destination_city, capacity_tons, status) VALUES (1, 'Київ', 'Львів', 10, 'Активна')")
+
+        # Завершені для угод (для перевірки 6.2, 6.3)
+        conn.execute(
+            "INSERT INTO CARGO_REQUESTS (client_id, origin_city, destination_city, weight_tons, status) VALUES (1, 'Вінниця', 'Рівне', 12.5, 'Завершена')")
+        conn.execute(
+            "INSERT INTO CARRIER_OFFERS (carrier_id, origin_city, destination_city, capacity_tons, status) VALUES (1, 'Вінниця', 'Рівне', 20, 'Завершена')")
+
+        today_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute('''
+            INSERT INTO DEALS (request_id, offer_id, agreed_price, status, completed_at, created_at) 
+            VALUES (3, 2, 4500, 'Завершена', ?, ?)
+        ''', (today_str, today_str))
+
+        conn.commit()
+        conn.close()
+
+        response = self.client.get('/statistics')
+        html = response.data.decode('utf-8')
+
+        # 6.1 Сторінка відкривається без помилок
+        self.assertEqual(response.status_code, 200)
+
+        # 6.2 Завершені угоди = 1
+        self.assertIn('<div class="stat-value text-primary">1</div>', html)
+
+        # 6.3 Сума обсягів = 12.5 тонн, Сума виручки = 4500.0 грн
+        self.assertIn('<div class="stat-value text-success">12.5</div>', html)
+        self.assertIn('<div class="stat-value text-warning">4500.0</div>', html)
+
+        # 6.4 Лічильник активних: 2 нові заявки, 1 активне авто
+        self.assertRegex(html, r'<div class="stat-value text-info">\s*2\s*</div>')
+        self.assertRegex(html, r'<div class="stat-value text-info">\s*1\s*</div>')
+
+    def test_6_5_statistics_date_range(self):
+        """6.5 Зміна діапазону дат"""
+        from datetime import datetime, timedelta
+        self.setup_admin('testpass')
+        self.login('testpass')
+
+        conn = db.get_db()
+        conn.execute("INSERT INTO CLIENTS (full_name) VALUES ('Клієнт')")
+        conn.execute("INSERT INTO CARRIERS (full_name) VALUES ('Перевізник')")
+        conn.execute(
+            "INSERT INTO CARGO_REQUESTS (client_id, origin_city, destination_city, weight_tons, status) VALUES (1, 'А', 'Б', 10.0, 'Завершена')")
+        conn.execute(
+            "INSERT INTO CARRIER_OFFERS (carrier_id, origin_city, destination_city, capacity_tons, status) VALUES (1, 'А', 'Б', 20, 'Завершена')")
+
+        # Угода 1: Сьогодні
+        today = datetime.now()
+        today_str = today.strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "INSERT INTO DEALS (request_id, offer_id, agreed_price, status, completed_at) VALUES (1, 1, 1000, 'Завершена', ?)",
+            (today_str,))
+
+        # Угода 2: 2 місяці тому (штучно створюємо стару угоду)
+        past_date = today - timedelta(days=60)
+        past_str = past_date.strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "INSERT INTO DEALS (request_id, offer_id, agreed_price, status, completed_at) VALUES (1, 1, 5000, 'Завершена', ?)",
+            (past_str,))
+
+        conn.commit()
+        conn.close()
+
+        # Фільтруємо так, щоб захопити ТІЛЬКИ минулу угоду
+        start_date = (past_date - timedelta(days=5)).strftime("%Y-%m-%d")
+        end_date = (past_date + timedelta(days=5)).strftime("%Y-%m-%d")
+
+        response = self.client.get(f'/statistics?start_date={start_date}&end_date={end_date}')
+        html = response.data.decode('utf-8')
+
+        # 6.5 Має бути знайдена лише 1 стара угода на суму 5000.0
+        self.assertIn('<div class="stat-value text-primary">1</div>', html)
+        self.assertIn('<div class="stat-value text-warning">5000.0</div>', html)
+        self.assertNotIn('1000.0', html)  # Сучасна угода не повинна потрапити у звіт
+
+    def test_6_6_statistics_empty_db(self):
+        """6.6 Статистика на порожній БД"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+
+        # Відкриваємо сторінку на абсолютно чистій БД
+        response = self.client.get('/statistics')
+        html = response.data.decode('utf-8')
+
+        # Сторінка відкривається успішно (не падає з 500 помилкою)
+        self.assertEqual(response.status_code, 200)
+
+        # Усі показники мають безпечно відображати нулі (без .0 на кінці)
+        self.assertIn('<div class="stat-value text-primary">0</div>', html)
+        self.assertIn('<div class="stat-value text-success">0</div>', html)
+        self.assertIn('<div class="stat-value text-warning">0</div>', html)
+        self.assertRegex(html, r'<div class="stat-value text-info">\s*0\s*</div>')
 
 
 if __name__ == '__main__':

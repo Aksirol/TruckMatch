@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h2>{{ title }}</h2>
+</div>
+
+<div class="card filters-panel">
+    <form method="GET" action="{{ url_for('statistics') }}" class="filter-form" style="align-items: flex-end;">
+        <div class="filter-group">
+            <label>Період з:</label>
+            <input type="date" name="start_date" value="{{ start_date }}" required>
+        </div>
+        <div class="filter-group">
+            <label>Період по:</label>
+            <input type="date" name="end_date" value="{{ end_date }}" required>
+        </div>
+        <div class="filter-actions">
+            <button type="submit" class="btn btn-secondary">Показати звіт</button>
+            <a href="{{ url_for('statistics') }}" class="btn btn-clear">Поточний місяць</a>
+        </div>
+    </form>
+</div>
+
+<h3>Результати за обраний період ({{ start_date }} — {{ end_date }})</h3>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-title">Завершено угод</div>
+        <div class="stat-value text-primary">{{ completed_deals }}</div>
+        <div class="stat-desc">шт.</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-title">Перевезено вантажів</div>
+        <div class="stat-value text-success">{{ total_weight }}</div>
+        <div class="stat-desc">тонн</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-title">Загальна сума угод</div>
+        <div class="stat-value text-warning">{{ total_revenue }}</div>
+        <div class="stat-desc">грн</div>
+    </div>
+</div>
+
+<div class="card mt-2">
+    <h3>Ефективність роботи (Завершені vs Скасовані)</h3>
+    <p>Успішність зведення пар: <strong>{{ success_rate }}%</strong> 
+       ({{ completed_deals }} завершено / {{ canceled_deals }} скасовано)</p>
+    <div class="progress-bar-container">
+        <div class="progress-bar-fill" style="width: {{ success_rate }}%;"></div>
+    </div>
+</div>
+
+<h3 class="mt-2">Поточний стан ринку (На даний момент)</h3>
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-title">Нові заявки (вантажі)</div>
+        <div class="stat-value text-info">{{ active_requests }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-title">Вільні перевізники</div>
+        <div class="stat-value text-info">{{ active_offers }}</div>
+    </div>
+</div>
+{% endblock %}

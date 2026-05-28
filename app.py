@@ -2,7 +2,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-from datetime import datetime
+from datetime import datetime, timedelta
 import db
 
 app = Flask(__name__)
@@ -545,11 +545,69 @@ def view_deal(id):
     return render_template('deals/view.html', deal=deal_details, title=f"Угода #{deal_details['id']}")
 
 
+# ==========================================
+# МОДУЛЬ 6: СТАТИСТИКА ТА ЗВІТНІСТЬ (F8)
+# ==========================================
+
 @app.route('/statistics')
 @login_required
 def statistics():
-    flash('Розділ "Статистика" знаходиться в розробці.', 'info')
-    return render_template('dashboard.html', title="Статистика")
+    # 1. Визначення дат для фільтрації (за замовчуванням - поточний місяць)
+    today = datetime.today()
+    first_day_of_month = today.replace(day=1).strftime('%Y-%m-%d')
+    current_day = today.strftime('%Y-%m-%d')
+
+    start_date = request.args.get('start_date', first_day_of_month)
+    end_date = request.args.get('end_date', current_day)
+
+    conn = db.get_db()
+
+    # 2. Агреговані показники закритих угод за період
+    stats_query = '''
+        SELECT 
+            COUNT(D.id) as deals_count,
+            SUM(CR.weight_tons) as total_weight,
+            SUM(D.agreed_price) as total_revenue
+        FROM DEALS D
+        JOIN CARGO_REQUESTS CR ON D.request_id = CR.id
+        WHERE D.status = 'Завершена'
+          AND DATE(D.completed_at) >= ? 
+          AND DATE(D.completed_at) <= ?
+    '''
+    stats = conn.execute(stats_query, (start_date, end_date)).fetchone()
+
+    completed_deals = stats['deals_count'] or 0
+    total_weight = round(stats['total_weight'] or 0, 1)
+    total_revenue = round(stats['total_revenue'] or 0, 2)
+
+    # 3. Аналітика скасованих угод за цей же період (для графіку співвідношення)
+    canceled_deals = conn.execute('''
+        SELECT COUNT(*) as count FROM DEALS 
+        WHERE status = 'Скасована'
+          AND DATE(created_at) >= ? AND DATE(created_at) <= ?
+    ''', (start_date, end_date)).fetchone()['count']
+
+    # 4. Поточний стан "ринку" (не залежить від дати - це зріз на даний момент)
+    active_requests = conn.execute("SELECT COUNT(*) as c FROM CARGO_REQUESTS WHERE status = 'Нова'").fetchone()['c']
+    active_offers = conn.execute("SELECT COUNT(*) as c FROM CARRIER_OFFERS WHERE status = 'Активна'").fetchone()['c']
+
+    conn.close()
+
+    # Розрахунок відсотка успішності для простого графіка
+    total_processed = completed_deals + canceled_deals
+    success_rate = int((completed_deals / total_processed * 100)) if total_processed > 0 else 0
+
+    return render_template('statistics/index.html',
+                           start_date=start_date,
+                           end_date=end_date,
+                           completed_deals=completed_deals,
+                           canceled_deals=canceled_deals,
+                           success_rate=success_rate,
+                           total_weight=total_weight,
+                           total_revenue=total_revenue,
+                           active_requests=active_requests,
+                           active_offers=active_offers,
+                           title="Статистика та звіти")
 
 
 # Обробка помилок

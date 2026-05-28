@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h2>Довідник: Замовники</h2>
+    <a href="{{ url_for('add_client') }}" class="btn">Додати замовника</a>
+</div>
+
+<div class="search-bar">
+    <form method="GET" action="{{ url_for('clients') }}" class="search-form">
+        <input type="text" name="search" placeholder="Пошук за ПІБ або телефоном..." value="{{ search }}">
+        <button type="submit" class="btn btn-secondary">Знайти</button>
+        {% if search %}
+            <a href="{{ url_for('clients') }}" class="btn btn-clear">Очистити</a>
+        {% endif %}
+    </form>
+</div>
+
+<div class="card table-responsive">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>ПІБ / Компанія</th>
+                <th>Телефон</th>
+                <th>E-mail</th>
+                <th>Дії</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for client in clients %}
+            <tr>
+                <td>{{ client.id }}</td>
+                <td><strong><a href="{{ url_for('view_client', id=client.id) }}">{{ client.full_name }}</a></strong></td>
+                <td>{{ client.phone }}</td>
+                <td>{{ client.email }}</td>
+                <td>
+                    <a href="{{ url_for('view_client', id=client.id) }}" class="btn-sm btn-info">Картка</a>
+                    <a href="{{ url_for('edit_client', id=client.id) }}" class="btn-sm btn-warning">Редаг.</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-center">Замовників не знайдено.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

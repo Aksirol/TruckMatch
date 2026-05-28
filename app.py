@@ -93,11 +93,168 @@ def cargo_requests():
     return render_template('dashboard.html', title="Заявки")
 
 
+# ==========================================
+# МОДУЛЬ 1: ЗАМОВНИКИ (CLIENTS)
+# ==========================================
+
+@app.route('/clients')
+@login_required
+def clients():
+    search = request.args.get('search', '')
+    conn = db.get_db()
+    if search:
+        query = 'SELECT * FROM CLIENTS WHERE full_name LIKE ? OR phone LIKE ? ORDER BY created_at DESC'
+        clients_list = conn.execute(query, (f'%{search}%', f'%{search}%')).fetchall()
+    else:
+        clients_list = conn.execute('SELECT * FROM CLIENTS ORDER BY created_at DESC').fetchall()
+    conn.close()
+    return render_template('clients/index.html', clients=clients_list, search=search, title="Замовники")
+
+
+@app.route('/clients/add', methods=['GET', 'POST'])
+@login_required
+def add_client():
+    if request.method == 'POST':
+        full_name = request.form['full_name']
+        phone = request.form['phone']
+        email = request.form['email']
+        notes = request.form['notes']
+
+        conn = db.get_db()
+        conn.execute('INSERT INTO CLIENTS (full_name, phone, email, notes) VALUES (?, ?, ?, ?)',
+                     (full_name, phone, email, notes))
+        conn.commit()
+        conn.close()
+        flash('Замовника успішно додано!', 'success')
+        return redirect(url_for('clients'))
+    return render_template('clients/form.html', title="Додати замовника", client=None)
+
+
+@app.route('/clients/<int:id>')
+@login_required
+def view_client(id):
+    conn = db.get_db()
+    client = conn.execute('SELECT * FROM CLIENTS WHERE id = ?', (id,)).fetchone()
+    # Тут у майбутньому ми будемо завантажувати історію угод для цього клієнта (Фаза 5)
+    conn.close()
+    if client is None:
+        return render_template('404.html'), 404
+    return render_template('clients/view.html', client=client, title=client['full_name'])
+
+
+@app.route('/clients/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_client(id):
+    conn = db.get_db()
+    client = conn.execute('SELECT * FROM CLIENTS WHERE id = ?', (id,)).fetchone()
+
+    if request.method == 'POST':
+        conn.execute('''UPDATE CLIENTS SET full_name = ?, phone = ?, email = ?, notes = ? WHERE id = ?''',
+                     (request.form['full_name'], request.form['phone'], request.form['email'], request.form['notes'],
+                      id))
+        conn.commit()
+        conn.close()
+        flash('Дані замовника оновлено!', 'success')
+        return redirect(url_for('view_client', id=id))
+
+    conn.close()
+    return render_template('clients/form.html', title="Редагування замовника", client=client)
+
+
+@app.route('/clients/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_client(id):
+    conn = db.get_db()
+    # Заборона видалення, якщо є заявки
+    requests_count = conn.execute('SELECT COUNT(*) FROM CARGO_REQUESTS WHERE client_id = ?', (id,)).fetchone()[0]
+    if requests_count > 0:
+        flash('Неможливо видалити замовника: існують пов\'язані заявки!', 'error')
+    else:
+        conn.execute('DELETE FROM CLIENTS WHERE id = ?', (id,))
+        conn.commit()
+        flash('Замовника видалено.', 'success')
+    conn.close()
+    return redirect(url_for('clients'))
+
+
+# ==========================================
+# МОДУЛЬ 2: ПЕРЕВІЗНИКИ (CARRIERS)
+# ==========================================
+
 @app.route('/carriers')
 @login_required
 def carriers():
-    flash('Розділ "Перевізники" знаходиться в розробці.', 'info')
-    return render_template('dashboard.html', title="Перевізники")
+    search = request.args.get('search', '')
+    conn = db.get_db()
+    if search:
+        query = 'SELECT * FROM CARRIERS WHERE full_name LIKE ? OR vehicle_type LIKE ? ORDER BY created_at DESC'
+        carriers_list = conn.execute(query, (f'%{search}%', f'%{search}%')).fetchall()
+    else:
+        carriers_list = conn.execute('SELECT * FROM CARRIERS ORDER BY created_at DESC').fetchall()
+    conn.close()
+    return render_template('carriers/index.html', carriers=carriers_list, search=search, title="Перевізники")
+
+
+@app.route('/carriers/add', methods=['GET', 'POST'])
+@login_required
+def add_carrier():
+    if request.method == 'POST':
+        conn = db.get_db()
+        conn.execute('''INSERT INTO CARRIERS (full_name, phone, email, vehicle_type, capacity_tons, notes) 
+                        VALUES (?, ?, ?, ?, ?, ?)''',
+                     (request.form['full_name'], request.form['phone'], request.form['email'],
+                      request.form['vehicle_type'], request.form['capacity_tons'], request.form['notes']))
+        conn.commit()
+        conn.close()
+        flash('Перевізника успішно додано!', 'success')
+        return redirect(url_for('carriers'))
+    return render_template('carriers/form.html', title="Додати перевізника", carrier=None)
+
+
+@app.route('/carriers/<int:id>')
+@login_required
+def view_carrier(id):
+    conn = db.get_db()
+    carrier = conn.execute('SELECT * FROM CARRIERS WHERE id = ?', (id,)).fetchone()
+    conn.close()
+    if carrier is None:
+        return render_template('404.html'), 404
+    return render_template('carriers/view.html', carrier=carrier, title=carrier['full_name'])
+
+
+@app.route('/carriers/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_carrier(id):
+    conn = db.get_db()
+    carrier = conn.execute('SELECT * FROM CARRIERS WHERE id = ?', (id,)).fetchone()
+
+    if request.method == 'POST':
+        conn.execute(
+            '''UPDATE CARRIERS SET full_name = ?, phone = ?, email = ?, vehicle_type = ?, capacity_tons = ?, notes = ? WHERE id = ?''',
+            (request.form['full_name'], request.form['phone'], request.form['email'],
+             request.form['vehicle_type'], request.form['capacity_tons'], request.form['notes'], id))
+        conn.commit()
+        conn.close()
+        flash('Дані перевізника оновлено!', 'success')
+        return redirect(url_for('view_carrier', id=id))
+
+    conn.close()
+    return render_template('carriers/form.html', title="Редагування перевізника", carrier=carrier)
+
+
+@app.route('/carriers/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_carrier(id):
+    conn = db.get_db()
+    offers_count = conn.execute('SELECT COUNT(*) FROM CARRIER_OFFERS WHERE carrier_id = ?', (id,)).fetchone()[0]
+    if offers_count > 0:
+        flash('Неможливо видалити перевізника: існують пов\'язані пропозиції!', 'error')
+    else:
+        conn.execute('DELETE FROM CARRIERS WHERE id = ?', (id,))
+        conn.commit()
+        flash('Перевізника видалено.', 'success')
+    conn.close()
+    return redirect(url_for('carriers'))
 
 
 @app.route('/deals')

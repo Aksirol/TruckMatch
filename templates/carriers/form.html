@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h2>{{ title }}</h2>
+    <a href="{{ url_for('carriers') }}" class="btn btn-secondary">Назад</a>
+</div>
+
+<div class="card">
+    <form method="POST" class="standard-form">
+        <div class="form-row">
+            <div class="form-group half">
+                <label for="full_name">ПІБ Водія / Трансп. компанія *</label>
+                <input type="text" id="full_name" name="full_name" required value="{{ carrier.full_name if carrier else '' }}">
+            </div>
+            <div class="form-group half">
+                <label for="phone">Контактний телефон</label>
+                <input type="text" id="phone" name="phone" value="{{ carrier.phone if carrier else '' }}">
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group third">
+                <label for="email">E-mail</label>
+                <input type="email" id="email" name="email" value="{{ carrier.email if carrier else '' }}">
+            </div>
+            <div class="form-group third">
+                <label for="vehicle_type">Тип авто (Тент, Реф, Цільномет.)</label>
+                <input type="text" id="vehicle_type" name="vehicle_type" value="{{ carrier.vehicle_type if carrier else '' }}">
+            </div>
+            <div class="form-group third">
+                <label for="capacity_tons">Вантажопідйомність (тонн)</label>
+                <input type="number" step="0.1" id="capacity_tons" name="capacity_tons" value="{{ carrier.capacity_tons if carrier else '' }}">
+            </div>
+        </div>
+
+        <div class="form-group full">
+            <label for="notes">Додаткові деталі (наприклад: номери авто, ФОП/ТОВ)</label>
+            <textarea id="notes" name="notes" rows="4">{{ carrier.notes if carrier else '' }}</textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Зберегти контакт</button>
+    </form>
+</div>
+{% endblock %}

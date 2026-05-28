@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block content %}
+    <div class="error-page">
+        <h1>500</h1>
+        <p>Внутрішня помилка сервера. Спробуйте пізніше.</p>
+        <a href="{{ url_for('index') }}" class="btn">Повернутися на головну</a>
+    </div>
+{% endblock %}

@@ -1,4 +1,5 @@
-# app.py
+import json
+from flask import Response
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -620,6 +621,91 @@ def page_not_found(e):
 def internal_server_error(e):
     return render_template('500.html', title="Внутрішня помилка сервера"), 500
 
+
+# ==========================================
+# МОДУЛЬ 7: РЕЗЕРВНЕ КОПІЮВАННЯ ТА ПОРТАТИВНІСТЬ (F9)
+# ==========================================
+
+@app.route('/backup')
+@login_required
+def backup_page():
+    return render_template('backup/index.html', title="Резервне копіювання")
+
+
+@app.route('/backup/export')
+@login_required
+def export_backup():
+    """Експорт усіх бізнес-даних у JSON"""
+    conn = db.get_db()
+    # Експортуємо всі таблиці, окрім USERS (щоб не перетерти пароль при відновленні на іншому ПК)
+    tables = ['CLIENTS', 'CARRIERS', 'CARGO_REQUESTS', 'CARRIER_OFFERS', 'DEALS']
+    backup_data = {}
+
+    for table in tables:
+        rows = conn.execute(f"SELECT * FROM {table}").fetchall()
+        backup_data[table] = [dict(row) for row in rows]
+    conn.close()
+
+    # Формуємо JSON-текст
+    json_data = json.dumps(backup_data, ensure_ascii=False, indent=4)
+    date_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
+
+    # Повертаємо як файл для завантаження
+    return Response(
+        json_data,
+        mimetype="application/json",
+        headers={"Content-Disposition": f"attachment;filename=truckmatch_backup_{date_str}.json"}
+    )
+
+
+@app.route('/backup/import', methods=['POST'])
+@login_required
+def import_backup():
+    """Відновлення даних із JSON-файлу"""
+    if 'backup_file' not in request.files:
+        flash('Файл не вибрано.', 'error')
+        return redirect(url_for('backup_page'))
+
+    file = request.files['backup_file']
+    if file.filename == '':
+        flash('Файл не вибрано.', 'error')
+        return redirect(url_for('backup_page'))
+
+    if file and file.filename.endswith('.json'):
+        try:
+            backup_data = json.load(file)
+            conn = db.get_db()
+
+            # Тимчасово вимикаємо перевірку зовнішніх ключів, щоб уникнути конфліктів при видаленні
+            conn.execute('PRAGMA foreign_keys = OFF;')
+
+            # Порядок видалення: від залежних до головних
+            tables_to_clear = ['DEALS', 'CARGO_REQUESTS', 'CARRIER_OFFERS', 'CLIENTS', 'CARRIERS']
+            for table in tables_to_clear:
+                conn.execute(f"DELETE FROM {table}")
+
+            # Порядок вставки: від головних до залежних
+            tables_to_restore = ['CLIENTS', 'CARRIERS', 'CARGO_REQUESTS', 'CARRIER_OFFERS', 'DEALS']
+            for table in tables_to_restore:
+                if table in backup_data:
+                    for row in backup_data[table]:
+                        columns = ', '.join(row.keys())
+                        placeholders = ', '.join(['?' for _ in row])
+                        values = tuple(row.values())
+                        # Вставляємо записи із збереженням їх оригінальних ID
+                        conn.execute(f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", values)
+
+            # Вмикаємо ключі назад
+            conn.execute('PRAGMA foreign_keys = ON;')
+            conn.commit()
+            conn.close()
+            flash('Дані успішно відновлено з резервної копії!', 'success')
+        except Exception as e:
+            flash(f'Помилка при відновленні даних. Переконайтеся, що файл коректний. Деталі: {str(e)}', 'error')
+    else:
+        flash('Будь ласка, завантажте файл у форматі .json', 'error')
+
+    return redirect(url_for('backup_page'))
 
 if __name__ == '__main__':
     app.run(debug=True)

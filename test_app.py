@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 import os
 import tempfile
@@ -785,6 +786,81 @@ class TruckMatchTestCase(unittest.TestCase):
         self.assertIn('<div class="stat-value text-warning">0</div>', html)
         self.assertRegex(html, r'<div class="stat-value text-info">\s*0\s*</div>')
 
+    # ==========================================
+    # ТЕСТОВІ СЦЕНАРІЇ ДЛЯ ФАЗИ 7 (BACKUP & PORTABILITY)
+    # ==========================================
+
+    def test_7_1_7_2_export_backup(self):
+        """7.1 Експорт у JSON та 7.2 Перевірка вмісту"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+
+        # Додамо тестові дані
+        conn = db.get_db()
+        conn.execute("INSERT INTO CLIENTS (full_name, phone) VALUES ('Експорт Клієнт', '123')")
+        conn.commit()
+        conn.close()
+
+        # Викликаємо функцію експорту
+        response = self.client.get('/backup/export')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content_type, 'application/json')
+
+        # Перевіряємо вміст
+        backup_content = json.loads(response.data.decode('utf-8'))
+        self.assertIn('CLIENTS', backup_content)
+        self.assertEqual(backup_content['CLIENTS'][0]['full_name'], 'Експорт Клієнт')
+
+    def test_7_3_and_7_6_import_and_restore(self):
+        """7.3 Відновлення з JSON та 7.6 Експорт-Зміна-Імпорт"""
+        from io import BytesIO
+        self.setup_admin('testpass')
+        self.login('testpass')
+
+        # 1. Створюємо дані та робимо бекап
+        conn = db.get_db()
+        conn.execute("INSERT INTO CLIENTS (full_name) VALUES ('Оригінал')")
+        conn.commit()
+        conn.close()
+
+        resp_export = self.client.get('/backup/export')
+        backup_json = resp_export.data
+
+        # 2. Змінюємо дані (видаляємо оригінал)
+        conn = db.get_db()
+        conn.execute("DELETE FROM CLIENTS")
+        conn.commit()
+        conn.close()
+
+        # 3. Імпортуємо бекап назад
+        data = {'backup_file': (BytesIO(backup_json), 'backup.json')}
+        self.client.post('/backup/import', data=data, content_type='multipart/form-data', follow_redirects=True)
+
+        # 4. Перевіряємо, що дані повернулися
+        conn = db.get_db()
+        client = conn.execute("SELECT * FROM CLIENTS").fetchone()
+        conn.close()
+        self.assertEqual(client['full_name'], 'Оригінал')
+
+    def test_7_4_and_7_5_portability(self):
+        """7.4/7.5 Тест портативності (імітація перенесення БД)"""
+        # Створюємо нову базу даних в іншому тимчасовому файлі
+        new_db_path = tempfile.mktemp()
+        db.DB_PATH = new_db_path
+
+        # 7.5 Запуск без файлу БД -> автоматичне створення нової порожньої
+        with app.app.app_context():
+            db.init_db()
+        self.assertTrue(os.path.exists(new_db_path))
+
+        # 7.4 Запуск на іншому носії (перевірка, що система бачить таблиці в новій БД)
+        conn = sqlite3.connect(new_db_path)
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        conn.close()
+        self.assertGreater(len(tables), 0)
+
+        # Очищення
+        if os.path.exists(new_db_path): os.unlink(new_db_path)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

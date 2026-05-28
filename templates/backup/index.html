@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h2>{{ title }} та перенесення даних</h2>
+</div>
+
+<div class="form-row">
+    <div class="card half" style="border-top: 4px solid #3498db;">
+        <h3>1. Експорт даних (Створення копії)</h3>
+        <p class="text-muted">Завантажте всі ваші замовлення, контакти та угоди в один JSON-файл. Рекомендується робити це щонайменше раз на тиждень.</p>
+        <a href="{{ url_for('export_backup') }}" class="btn btn-info mt-2">Завантажити JSON-архів</a>
+    </div>
+
+    <div class="card half" style="border-top: 4px solid #e74c3c;">
+        <h3>2. Відновлення з JSON</h3>
+        <p class="text-muted">Оберіть раніше збережений JSON-файл для відновлення. <br><strong style="color:red;">Увага:</strong> усі поточні дані будуть перезаписані!</p>
+        <form method="POST" action="{{ url_for('import_backup') }}" enctype="multipart/form-data" class="mt-2">
+            <input type="file" name="backup_file" accept=".json" required style="margin-bottom: 1rem;">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Ви впевнені? Це видалить поточні дані та замінить їх даними з файлу.');">Відновити дані</button>
+        </form>
+    </div>
+</div>
+
+<div class="card mt-2" style="border-top: 4px solid #2ecc71; background-color: #f9fbf9;">
+    <h3>🚀 Портативність (Перенесення на інший ПК без JSON)</h3>
+    <p>Система <strong>TruckMatch</strong> побудована на базі вбудованої СУБД SQLite. Це означає, що вся ваша база даних фізично знаходиться в одному файлі.</p>
+    
+    <h4>Як перенести програму на інший комп'ютер (або на флешку):</h4>
+    <ol>
+        <li>Закрийте програму на поточному комп'ютері.</li>
+        <li>Знайдіть файл <strong><code>truckmatch.db</code></strong> у папці з програмою.</li>
+        <li>Скопіюйте всю папку з програмою (або тільки файл <code>truckmatch.db</code>, якщо програма вже встановлена на іншому ПК).</li>
+        <li>Запустіть систему на новому місці — усі ваші дані, логін та пароль залишаться на місці!</li>
+    </ol>
+</div>
+{% endblock %}

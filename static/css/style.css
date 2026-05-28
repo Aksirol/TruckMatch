@@ -292,3 +292,9 @@ footer {
 .status-підтверджено { background-color: #2ecc71; }
 .status-активна { background-color: #2ecc71; }
 .status-завершена { background-color: #95a5a6; }
+
+/* Додаткові статуси угод */
+.status-розглядається { background-color: #8e44ad; }
+.status-в-дорозі { background-color: #e67e22; }
+.status-скасована { background-color: #c0392b; }
+.btn-primary { background-color: var(--accent-color); color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;}

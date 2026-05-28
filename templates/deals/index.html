@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h2>{{ title }}</h2>
+</div>
+
+<div class="card table-responsive">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>ID Угоди</th>
+                <th>Маршрут</th>
+                <th>Замовник</th>
+                <th>Перевізник</th>
+                <th>Ціна (₴)</th>
+                <th>Статус</th>
+                <th>Дії</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for deal in deals %}
+            <tr>
+                <td>#{{ deal.id }}</td>
+                <td><strong>{{ deal.origin_city }} &rarr; {{ deal.destination_city }}</strong><br><small>{{ deal.cargo_type }}</small></td>
+                <td>{{ deal.client_name }}</td>
+                <td>{{ deal.carrier_name }}</td>
+                <td>{{ deal.agreed_price }}</td>
+                <td><span class="badge status-{{ deal.status|replace(' ', '-')|lower }}">{{ deal.status }}</span></td>
+                <td>
+                    <a href="{{ url_for('view_deal', id=deal.id) }}" class="btn-sm btn-primary">Деталі</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" class="text-center">Угод ще не створено.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

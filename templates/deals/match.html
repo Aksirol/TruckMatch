@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h2>{{ title }} для заявки #{{ req.id }}</h2>
+    <a href="{{ url_for('cargo_requests') }}" class="btn btn-secondary">Назад до заявок</a>
+</div>
+
+<div class="card detail-card" style="margin-bottom: 2rem; border-left-color: var(--primary-color);">
+    <h3>Вантаж: {{ req.cargo_type }} ({{ req.weight_tons }} т)</h3>
+    <p><strong>Маршрут:</strong> {{ req.origin_city }} &rarr; {{ req.destination_city }}</p>
+    <p><strong>Бажана дата:</strong> {{ req.desired_date }}</p>
+</div>
+
+<h3>Підходящі пропозиції від перевізників:</h3>
+{% if offers %}
+    <div class="card table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Перевізник</th>
+                    <th>Маршрут авто</th>
+                    <th>Авто / Вільна вага</th>
+                    <th>Дата готовності</th>
+                    <th>Дія (Зв'язати)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for offer in offers %}
+                <tr>
+                    <td><strong>{{ offer.carrier_name }}</strong><br><small>{{ offer.carrier_phone }}</small></td>
+                    <td>{{ offer.origin_city }} &rarr; {{ offer.destination_city }}</td>
+                    <td><span class="badge">{{ offer.vehicle_type }}</span> {{ offer.capacity_tons }} т</td>
+                    <td>{{ offer.available_date }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('create_deal') }}" style="display:inline-flex; gap:0.5rem; align-items:center;">
+                            <input type="hidden" name="request_id" value="{{ req.id }}">
+                            <input type="hidden" name="offer_id" value="{{ offer.id }}">
+                            <input type="number" name="agreed_price" placeholder="Сума (₴)" required style="width: 100px; padding: 0.3rem;">
+                            <button type="submit" class="btn btn-info btn-sm">Створити угоду</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        Не знайдено жодного вільного авто, що відповідає маршруту ({{ req.origin_city }} - {{ req.destination_city }}) та вазі (≥ {{ req.weight_tons }} т).
+    </div>
+{% endif %}
+{% endblock %}

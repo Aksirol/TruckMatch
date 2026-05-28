@@ -2,6 +2,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
+from datetime import datetime
 import db
 
 app = Flask(__name__)
@@ -243,11 +244,21 @@ def add_client():
 def view_client(id):
     conn = db.get_db()
     client = conn.execute('SELECT * FROM CLIENTS WHERE id = ?', (id,)).fetchone()
-    # Тут у майбутньому ми будемо завантажувати історію угод для цього клієнта (Фаза 5)
-    conn.close()
+
     if client is None:
+        conn.close()
         return render_template('404.html'), 404
-    return render_template('clients/view.html', client=client, title=client['full_name'])
+
+    deals = conn.execute('''
+            SELECT D.id, D.status, D.agreed_price, D.created_at, CR.origin_city, CR.destination_city
+            FROM DEALS D
+            JOIN CARGO_REQUESTS CR ON D.request_id = CR.id
+            WHERE CR.client_id = ?
+            ORDER BY D.created_at DESC
+        ''', (id,)).fetchall()
+    conn.close()
+
+    return render_template('clients/view.html', client=client, deals=deals, title=client['full_name'])
 
 
 @app.route('/clients/<int:id>/edit', methods=['GET', 'POST'])
@@ -324,10 +335,21 @@ def add_carrier():
 def view_carrier(id):
     conn = db.get_db()
     carrier = conn.execute('SELECT * FROM CARRIERS WHERE id = ?', (id,)).fetchone()
-    conn.close()
+
     if carrier is None:
+        conn.close()
         return render_template('404.html'), 404
-    return render_template('carriers/view.html', carrier=carrier, title=carrier['full_name'])
+
+    deals = conn.execute('''
+            SELECT D.id, D.status, D.agreed_price, D.created_at, CO.origin_city, CO.destination_city
+            FROM DEALS D
+            JOIN CARRIER_OFFERS CO ON D.offer_id = CO.id
+            WHERE CO.carrier_id = ?
+            ORDER BY D.created_at DESC
+        ''', (id,)).fetchall()
+    conn.close()
+
+    return render_template('carriers/view.html', carrier=carrier, deals=deals, title=carrier['full_name'])
 
 
 @app.route('/carriers/<int:id>/edit', methods=['GET', 'POST'])
@@ -365,11 +387,162 @@ def delete_carrier(id):
     return redirect(url_for('carriers'))
 
 
+# ==========================================
+# МОДУЛЬ 5: ПІДБІР ТА УГОДИ (DEALS) (F3, F4, F5)
+# ==========================================
+
+@app.route('/requests/<int:id>/match')
+@login_required
+def match_request(id):
+    """F3: Пошук відповідності (Match)"""
+    conn = db.get_db()
+    req = conn.execute('SELECT * FROM CARGO_REQUESTS WHERE id = ?', (id,)).fetchone()
+
+    if not req:
+        conn.close()
+        return render_template('404.html'), 404
+
+    # Шукаємо активні пропозиції: збіг міст та достатня вантажопідйомність
+    query = '''
+        SELECT CO.*, C.full_name as carrier_name, C.phone as carrier_phone 
+        FROM CARRIER_OFFERS CO
+        JOIN CARRIERS C ON CO.carrier_id = C.id
+        WHERE CO.status = 'Активна'
+          AND CO.origin_city LIKE ?
+          AND CO.destination_city LIKE ?
+          AND CO.capacity_tons >= ?
+        ORDER BY CO.capacity_tons ASC
+    '''
+    offers = conn.execute(query,
+                          (f"%{req['origin_city']}%", f"%{req['destination_city']}%", req['weight_tons'])).fetchall()
+    conn.close()
+
+    return render_template('deals/match.html', req=req, offers=offers, title="Підбір перевізника")
+
+
+@app.route('/deals/create', methods=['POST'])
+@login_required
+def create_deal():
+    """F4: Підтвердження угоди (Зв'язування)"""
+    req_id = request.form['request_id']
+    offer_id = request.form['offer_id']
+    price = request.form.get('agreed_price', 0)
+
+    conn = db.get_db()
+
+    # 5.9: Валідація — чи не зайняті вже заявка або пропозиція
+    req_status = conn.execute("SELECT status FROM CARGO_REQUESTS WHERE id = ?", (req_id,)).fetchone()['status']
+    offer_status = conn.execute("SELECT status FROM CARRIER_OFFERS WHERE id = ?", (offer_id,)).fetchone()['status']
+
+    if req_status != 'Нова' or offer_status != 'Активна':
+        conn.close()
+        flash('Помилка: Заявка або авто вже зайняті в іншій угоді!', 'error')
+        return redirect(url_for('cargo_requests'))
+
+    # Створюємо угоду
+    conn.execute('''INSERT INTO DEALS (request_id, offer_id, agreed_price, status)
+                    VALUES (?, ?, ?, 'Нова')''', (req_id, offer_id, price))
+    deal_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+    # Оновлюємо статуси
+    conn.execute("UPDATE CARGO_REQUESTS SET status = 'В обробці' WHERE id = ?", (req_id,))
+    conn.execute("UPDATE CARRIER_OFFERS SET status = 'В обробці' WHERE id = ?", (offer_id,))
+
+    conn.commit()
+    conn.close()
+    flash('Пару успішно зведено! Угоду створено.', 'success')
+    return redirect(url_for('view_deal', id=deal_id))
+
+
 @app.route('/deals')
 @login_required
 def deals():
-    flash('Розділ "Угоди" знаходиться в розробці.', 'info')
-    return render_template('dashboard.html', title="Угоди")
+    """Список усіх угод"""
+    conn = db.get_db()
+    query = '''
+        SELECT D.*, 
+               CR.origin_city, CR.destination_city, CR.cargo_type,
+               C1.full_name as client_name,
+               C2.full_name as carrier_name
+        FROM DEALS D
+        JOIN CARGO_REQUESTS CR ON D.request_id = CR.id
+        JOIN CARRIER_OFFERS CO ON D.offer_id = CO.id
+        JOIN CLIENTS C1 ON CR.client_id = C1.id
+        JOIN CARRIERS C2 ON CO.carrier_id = C2.id
+        ORDER BY D.created_at DESC
+    '''
+    deals_list = conn.execute(query).fetchall()
+    conn.close()
+    return render_template('deals/index.html', deals=deals_list, title="Управління угодами")
+
+
+@app.route('/deals/<int:id>', methods=['GET', 'POST'])
+@login_required
+def view_deal(id):
+    """F5: Машина станів угоди та перегляд деталей"""
+    conn = db.get_db()
+
+    if request.method == 'POST':
+        new_status = request.form['status']
+        deal = conn.execute("SELECT status, request_id, offer_id FROM DEALS WHERE id = ?", (id,)).fetchone()
+
+        # 5.6: Валідація недопустимого переходу
+        if deal['status'] in ['Завершена', 'Скасована']:
+            conn.close()
+            flash('Неможливо змінити статус закритої або скасованої угоди.', 'error')
+            return redirect(url_for('view_deal', id=id))
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        update_query = "UPDATE DEALS SET status = ?"
+        params = [new_status]
+
+        if new_status == 'Підтверджена':
+            update_query += ", confirmed_at = ?"
+            params.append(now)
+        elif new_status == 'Завершена':
+            update_query += ", completed_at = ?"
+            params.append(now)
+
+        update_query += " WHERE id = ?"
+        params.append(id)
+        conn.execute(update_query, tuple(params))
+
+        # 5.7: Логіка синхронізації статусів заявок
+        if new_status == 'Скасована':
+            # Повертаємо в пул
+            conn.execute("UPDATE CARGO_REQUESTS SET status = 'Нова' WHERE id = ?", (deal['request_id'],))
+            conn.execute("UPDATE CARRIER_OFFERS SET status = 'Активна' WHERE id = ?", (deal['offer_id'],))
+        elif new_status == 'Завершена':
+            conn.execute("UPDATE CARGO_REQUESTS SET status = 'Завершена' WHERE id = ?", (deal['request_id'],))
+            conn.execute("UPDATE CARRIER_OFFERS SET status = 'Завершена' WHERE id = ?", (deal['offer_id'],))
+        else:
+            conn.execute("UPDATE CARGO_REQUESTS SET status = 'В обробці' WHERE id = ?", (deal['request_id'],))
+            conn.execute("UPDATE CARRIER_OFFERS SET status = 'В обробці' WHERE id = ?", (deal['offer_id'],))
+
+        conn.commit()
+        flash(f'Статус угоди змінено на "{new_status}"', 'success')
+        return redirect(url_for('view_deal', id=id))
+
+    deal_query = '''
+        SELECT D.*, 
+               CR.origin_city, CR.destination_city, CR.cargo_type, CR.weight_tons, CR.desired_date,
+               C1.full_name as client_name, C1.phone as client_phone,
+               CO.vehicle_type, CO.capacity_tons,
+               C2.full_name as carrier_name, C2.phone as carrier_phone
+        FROM DEALS D
+        JOIN CARGO_REQUESTS CR ON D.request_id = CR.id
+        JOIN CARRIER_OFFERS CO ON D.offer_id = CO.id
+        JOIN CLIENTS C1 ON CR.client_id = C1.id
+        JOIN CARRIERS C2 ON CO.carrier_id = C2.id
+        WHERE D.id = ?
+    '''
+    deal_details = conn.execute(deal_query, (id,)).fetchone()
+    conn.close()
+
+    if not deal_details:
+        return render_template('404.html'), 404
+
+    return render_template('deals/view.html', deal=deal_details, title=f"Угода #{deal_details['id']}")
 
 
 @app.route('/statistics')

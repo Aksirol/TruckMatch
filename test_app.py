@@ -465,6 +465,210 @@ class TruckMatchTestCase(unittest.TestCase):
         self.assertIn('Місто А &rarr; Місто Б', html_cleared)
         self.assertIn('Місто В &rarr; Місто Г', html_cleared)
 
+    # ==========================================
+    # ТЕСТОВІ СЦЕНАРІЇ ДЛЯ ФАЗИ 5 (ПІДБІР ТА УГОДИ)
+    # ==========================================
+
+    def setup_deal_data(self):
+        """Допоміжний метод: створює тестові дані для угод"""
+        conn = db.get_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO CLIENTS (full_name) VALUES ('Клієнт 5')")
+        client_id = cursor.lastrowid
+        cursor.execute("INSERT INTO CARRIERS (full_name) VALUES ('Перевізник 5')")
+        carrier_id = cursor.lastrowid
+
+        # Заявка: 10 тонн, Київ-Львів
+        cursor.execute(
+            "INSERT INTO CARGO_REQUESTS (client_id, origin_city, destination_city, weight_tons, status) VALUES (?, 'Київ', 'Львів', 10, 'Нова')",
+            (client_id,))
+        req_id = cursor.lastrowid
+
+        # Ідеальна пропозиція (Підходить)
+        cursor.execute(
+            "INSERT INTO CARRIER_OFFERS (carrier_id, origin_city, destination_city, capacity_tons, status, vehicle_type) VALUES (?, 'Київ', 'Львів', 20, 'Активна', 'Тент 1')",
+            (carrier_id,))
+        offer_good_id = cursor.lastrowid
+
+        # Пропозиція з недостатньою вагою (Не підходить)
+        cursor.execute(
+            "INSERT INTO CARRIER_OFFERS (carrier_id, origin_city, destination_city, capacity_tons, status, vehicle_type) VALUES (?, 'Київ', 'Львів', 5, 'Активна', 'Тент 2')",
+            (carrier_id,))
+
+        # Пропозиція з іншим містом (Не підходить)
+        cursor.execute(
+            "INSERT INTO CARRIER_OFFERS (carrier_id, origin_city, destination_city, capacity_tons, status, vehicle_type) VALUES (?, 'Одеса', 'Львів', 20, 'Активна', 'Тент 3')",
+            (carrier_id,))
+
+        conn.commit()
+        conn.close()
+        return client_id, carrier_id, req_id, offer_good_id
+
+    def test_5_1_and_5_2_match_logic(self):
+        """5.1 Підбір для заявки (фільтрація) та 5.2 (порожній список)"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+        _, _, req_id, _ = self.setup_deal_data()
+
+        # Відкриваємо сторінку підбору
+        response = self.client.get(f'/requests/{req_id}/match')
+        html = response.data.decode('utf-8')
+
+        # 5.1: Має бути лише Тент 1 (бо вага >= 10 і міста збігаються)
+        self.assertIn('Тент 1', html)
+        self.assertNotIn('Тент 2', html)  # Недостатня вага
+        self.assertNotIn('Тент 3', html)  # Інший маршрут
+
+        # 5.2 Перевірка на відсутність пропозицій
+        conn = db.get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO CARGO_REQUESTS (client_id, origin_city, destination_city, weight_tons, status) VALUES (1, 'Париж', 'Рим', 10, 'Нова')")
+        empty_req_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        resp_empty = self.client.get(f'/requests/{empty_req_id}/match')
+        self.assertIn('Не знайдено жодного вільного авто', resp_empty.data.decode('utf-8'))
+
+    def test_5_3_and_5_4_create_deal(self):
+        """5.3 Зв'язати заявку й пропозицію та 5.4 Перевірка запису DEALS"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+        _, _, req_id, offer_id = self.setup_deal_data()
+
+        # Відправляємо запит на створення угоди
+        response = self.client.post('/deals/create', data={
+            'request_id': req_id,
+            'offer_id': offer_id,
+            'agreed_price': 15000
+        }, follow_redirects=True)
+
+        self.assertIn('Угоду створено', response.data.decode('utf-8'))
+
+        # 5.4 Перевірка БД
+        conn = db.get_db()
+        deal = conn.execute("SELECT * FROM DEALS WHERE request_id = ?", (req_id,)).fetchone()
+        req = conn.execute("SELECT status FROM CARGO_REQUESTS WHERE id = ?", (req_id,)).fetchone()
+        offer = conn.execute("SELECT status FROM CARRIER_OFFERS WHERE id = ?", (offer_id,)).fetchone()
+        conn.close()
+
+        self.assertIsNotNone(deal)
+        self.assertEqual(deal['offer_id'], offer_id)
+        self.assertEqual(deal['agreed_price'], 15000.0)
+        self.assertEqual(deal['status'], 'Нова')
+
+        # 5.3 Перевірка оновлення статусів пов'язаних записів
+        self.assertEqual(req['status'], 'В обробці')
+        self.assertEqual(offer['status'], 'В обробці')
+
+    def test_5_5_and_5_6_status_transitions(self):
+        """5.5 Переходи по статусах та 5.6 Недопустимий перехід"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+        _, _, req_id, offer_id = self.setup_deal_data()
+
+        # Створюємо угоду безпосередньо в БД
+        conn = db.get_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO DEALS (request_id, offer_id, status) VALUES (?, ?, 'Нова')", (req_id, offer_id))
+        deal_id = cursor.lastrowid
+        conn.commit()
+
+        # 5.5 Дозволений перехід та фіксація дати (Підтверджена)
+        self.client.post(f'/deals/{deal_id}', data={'status': 'Підтверджена'})
+        deal = conn.execute("SELECT status, confirmed_at FROM DEALS WHERE id = ?", (deal_id,)).fetchone()
+        self.assertEqual(deal['status'], 'Підтверджена')
+        self.assertIsNotNone(deal['confirmed_at'])  # Дата має проставитись
+
+        # Переводимо в Завершена
+        self.client.post(f'/deals/{deal_id}', data={'status': 'Завершена'})
+        deal = conn.execute("SELECT status, completed_at FROM DEALS WHERE id = ?", (deal_id,)).fetchone()
+        self.assertEqual(deal['status'], 'Завершена')
+        self.assertIsNotNone(deal['completed_at'])
+
+        # 5.6 Недопустимий перехід (із Завершеної назад у Нову)
+        resp_invalid = self.client.post(f'/deals/{deal_id}', data={'status': 'Нова'}, follow_redirects=True)
+        self.assertIn('Неможливо змінити статус закритої або скасованої угоди.', resp_invalid.data.decode('utf-8'))
+
+        # Статус має залишитись "Завершена"
+        deal_final = conn.execute("SELECT status FROM DEALS WHERE id = ?", (deal_id,)).fetchone()
+        self.assertEqual(deal_final['status'], 'Завершена')
+        conn.close()
+
+    def test_5_7_cancel_deal(self):
+        """5.7 Скасувати угоду (повернення в пул)"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+        _, _, req_id, offer_id = self.setup_deal_data()
+
+        conn = db.get_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO DEALS (request_id, offer_id, status) VALUES (?, ?, 'Нова')", (req_id, offer_id))
+        deal_id = cursor.lastrowid
+        conn.commit()
+
+        # Скасовуємо угоду
+        self.client.post(f'/deals/{deal_id}', data={'status': 'Скасована'})
+
+        # Перевіряємо статуси
+        deal = conn.execute("SELECT status FROM DEALS WHERE id = ?", (deal_id,)).fetchone()
+        req = conn.execute("SELECT status FROM CARGO_REQUESTS WHERE id = ?", (req_id,)).fetchone()
+        offer = conn.execute("SELECT status FROM CARRIER_OFFERS WHERE id = ?", (offer_id,)).fetchone()
+        conn.close()
+
+        self.assertEqual(deal['status'], 'Скасована')
+        self.assertEqual(req['status'], 'Нова')  # Заявка повернулась в пул
+        self.assertEqual(offer['status'], 'Активна')  # Авто повернулось в пул
+
+    def test_5_8_contact_card_history(self):
+        """5.8 Картка сторони після угоди (F7)"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+        client_id, _, req_id, offer_id = self.setup_deal_data()
+
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO DEALS (request_id, offer_id, status, agreed_price) VALUES (?, ?, 'Підтверджена', 9999)",
+            (req_id, offer_id))
+        conn.commit()
+        conn.close()
+
+        response = self.client.get(f'/clients/{client_id}')
+        html = response.data.decode('utf-8')
+
+        # В історії замовника має відображатись угода (ціна та статус)
+        self.assertIn('9999.0', html)
+        self.assertIn('Підтверджена', html)
+
+    def test_5_9_prevent_duplicate_deals(self):
+        """5.9 Зв'язати вже зайняту пропозицію (блокування дублів)"""
+        self.setup_admin('testpass')
+        self.login('testpass')
+        _, _, req_id, offer_id = self.setup_deal_data()
+
+        # Робимо заявку та пропозицію зайнятими
+        conn = db.get_db()
+        conn.execute("UPDATE CARGO_REQUESTS SET status = 'В обробці' WHERE id = ?", (req_id,))
+        conn.execute("UPDATE CARRIER_OFFERS SET status = 'В обробці' WHERE id = ?", (offer_id,))
+        conn.commit()
+        conn.close()
+
+        # Намагаємося створити угоду ще раз
+        response = self.client.post('/deals/create', data={
+            'request_id': req_id,
+            'offer_id': offer_id,
+            'agreed_price': 1000
+        }, follow_redirects=True)
+
+        self.assertIn('Заявка або авто вже зайняті в іншій угоді!', response.data.decode('utf-8'))
+
+        # Переконуємось, що угода не створилась
+        conn = db.get_db()
+        count = conn.execute("SELECT COUNT(*) FROM DEALS WHERE request_id = ?", (req_id,)).fetchone()[0]
+        conn.close()
+        self.assertEqual(count, 0)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

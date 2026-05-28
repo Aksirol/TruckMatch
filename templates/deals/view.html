@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-header">
+    <h2>{{ title }}</h2>
+    <a href="{{ url_for('deals') }}" class="btn btn-secondary">До списку угод</a>
+</div>
+
+<div class="form-row">
+    <div class="card detail-card half">
+        <h3>Деталі перевезення</h3>
+        <p><strong>Маршрут:</strong> {{ deal.origin_city }} &rarr; {{ deal.destination_city }}</p>
+        <p><strong>Вантаж:</strong> {{ deal.cargo_type }} ({{ deal.weight_tons }} т)</p>
+        <p><strong>Бажана дата:</strong> {{ deal.desired_date }}</p>
+        <hr>
+        <p><strong>Замовник:</strong> {{ deal.client_name }} ({{ deal.client_phone }})</p>
+        <p><strong>Перевізник:</strong> {{ deal.carrier_name }} ({{ deal.carrier_phone }})</p>
+        <p><strong>Автомобіль:</strong> {{ deal.vehicle_type }} (в/п {{ deal.capacity_tons }} т)</p>
+        <hr>
+        <p><strong>Домовлена ціна:</strong> <span style="font-size: 1.2rem; font-weight: bold; color: #27ae60;">{{ deal.agreed_price }} ₴</span></p>
+        <p class="text-muted"><small>Створено: {{ deal.created_at }}</small></p>
+        {% if deal.confirmed_at %}<p class="text-muted"><small>Підтверджено: {{ deal.confirmed_at }}</small></p>{% endif %}
+        {% if deal.completed_at %}<p class="text-muted"><small>Завершено: {{ deal.completed_at }}</small></p>{% endif %}
+    </div>
+
+    <div class="card half" style="background-color: #f8f9fa;">
+        <h3>Управління статусом (Машина станів)</h3>
+        <div style="margin-bottom: 1.5rem;">
+            Поточний статус: <span class="badge status-{{ deal.status|replace(' ', '-')|lower }}" style="font-size: 1rem; padding: 0.5rem 1rem;">{{ deal.status }}</span>
+        </div>
+        
+        <form method="POST" action="{{ url_for('view_deal', id=deal.id) }}">
+            <div class="form-group">
+                <label>Змінити стан на:</label>
+                <select name="status" class="full" style="padding: 0.8rem;">
+                    <option value="Нова" {% if deal.status == 'Нова' %}selected{% endif %}>Нова</option>
+                    <option value="Розглядається" {% if deal.status == 'Розглядається' %}selected{% endif %}>Розглядається</option>
+                    <option value="Підтверджена" {% if deal.status == 'Підтверджена' %}selected{% endif %}>Підтверджена</option>
+                    <option value="В дорозі" {% if deal.status == 'В дорозі' %}selected{% endif %}>В дорозі</option>
+                    <option value="Завершена" {% if deal.status == 'Завершена' %}selected{% endif %}>Завершена (Закрити угоду)</option>
+                    <option value="Скасована" {% if deal.status == 'Скасована' %}selected{% endif %}>Скасована (Зрив)</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-warning full">Оновити статус</button>
+        </form>
+        <p class="text-muted mt-2"><small>* Зміна статусу на "Завершена" або "Скасована" автоматично звільнить або закриє пов'язану заявку та авто.</small></p>
+    </div>
+</div>
+{% endblock %}

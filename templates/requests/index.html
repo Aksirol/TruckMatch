@@ -23,10 +23,10 @@
             <label>Статус:</label>
             <select name="status">
                 <option value="">Усі статуси</option>
-                <option value="Нова" {% if request_args.get('status') == 'Нова' %}selected{% endif %}>Нова</option>
-                <option value="В обробці" {% if request_args.get('status') == 'В обробці' %}selected{% endif %}>В обробці</option>
-                <option value="Підтверджено" {% if request_args.get('status') == 'Підтверджено' %}selected{% endif %}>Підтверджено</option>
-                <option value="Завершена" {% if request_args.get('status') == 'Завершена' %}selected{% endif %}>Завершена</option>
+                <option value="Нова" {{ 'selected' if request_args.get('status') == 'Нова' else '' }}>Нова</option>
+                <option value="В обробці" {{ 'selected' if request_args.get('status') == 'В обробці' else '' }}>В обробці</option>
+                <option value="Підтверджено" {{ 'selected' if request_args.get('status') == 'Підтверджено' else '' }}>Підтверджено</option>
+                <option value="Завершена" {{ 'selected' if request_args.get('status') == 'Завершена' else '' }}>Завершена</option>
             </select>
         </div>
         <div class="filter-actions">
@@ -46,6 +46,7 @@
                 <th>Вантаж / Вага</th>
                 <th>Замовник</th>
                 <th>Статус</th>
+                <th>Дії</th>
             </tr>
         </thead>
         <tbody>
@@ -57,10 +58,15 @@
                 <td>{{ req.cargo_type }} ({{ req.weight_tons }} т)</td>
                 <td>{{ req.client_name }} <br><small>{{ req.client_phone }}</small></td>
                 <td><span class="badge status-{{ req.status|replace(' ', '-')|lower }}">{{ req.status }}</span></td>
+                <td>
+                    {% if req.status == 'Нова' %}
+                        <a href="{{ url_for('match_request', id=req.id) }}" class="btn-sm btn-warning">Підібрати авто</a>
+                    {% endif %}
+                </td>
             </tr>
             {% else %}
             <tr>
-                <td colspan="6" class="text-center">Заявок не знайдено.</td>
+                <td colspan="7" class="text-center">Заявок не знайдено.</td>
             </tr>
             {% endfor %}
         </tbody>
